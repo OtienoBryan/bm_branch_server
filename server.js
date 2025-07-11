@@ -98,6 +98,7 @@ app.post('/api/auth/login', async (req, res) => {
         branchId: branch.id,
         name: branch.name,
         role: branch.role,
+        role_id: branch.role_id, // add this
         clientId: branch.client_id
       },
       process.env.JWT_SECRET || 'your-secret-key',
@@ -112,6 +113,7 @@ app.post('/api/auth/login', async (req, res) => {
         name: branch.name,
         email: branch.email,
         role: branch.role,
+        role_id: branch.role_id, // add this
         client_id: branch.client_id
       }
     });

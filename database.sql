@@ -127,10 +127,14 @@ CREATE TABLE IF NOT EXISTS branches (
   username VARCHAR(255) NOT NULL UNIQUE, -- for login
   password VARCHAR(255) NOT NULL,        -- hashed password
   role ENUM('branch', 'admin') DEFAULT 'branch',
+  role_id INT DEFAULT 1, -- 1 = admin, 2 = branch, etc.
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (client_id) REFERENCES clients(id)
+  -- FOREIGN KEY (role_id) REFERENCES roles(id) -- Uncomment if you want a strict FK
 );
+-- If branches table already exists, run the following manually:
+-- ALTER TABLE branches ADD COLUMN role_id INT DEFAULT 1;
 
 -- Insert test user (password: test123)
 INSERT INTO users (username, email, password, role) VALUES 
