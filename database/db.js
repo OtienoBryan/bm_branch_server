@@ -8,7 +8,8 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME || 'bm_admin_db',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  timezone: '+03:00' // Set to East Africa Time
 });
 
 // Test database connection

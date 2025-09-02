@@ -13,9 +13,11 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS clients (
   id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(255) NOT NULL,
+  account_number VARCHAR(255) NOT NULL UNIQUE,
   email VARCHAR(255) NOT NULL,
   phone VARCHAR(20),
   address TEXT,
+  balance DECIMAL(10, 2) DEFAULT 0.00,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -98,6 +100,23 @@ CREATE TABLE IF NOT EXISTS notices (
   created_by INT,
   status TINYINT DEFAULT 1,
   FOREIGN KEY (created_by) REFERENCES staff(id)
+);
+
+-- Create inquiries table
+CREATE TABLE IF NOT EXISTS inquiries (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  subject VARCHAR(255) NOT NULL,
+  message TEXT NOT NULL,
+  inquiry_type ENUM('general', 'service', 'billing', 'support', 'other') DEFAULT 'general',
+  status ENUM('pending', 'in_progress', 'resolved', 'closed') DEFAULT 'pending',
+  priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
+  assigned_to INT,
+  response TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES branches(id),
+  FOREIGN KEY (assigned_to) REFERENCES staff(id)
 );
 
 -- Create daily_runs table

@@ -84,7 +84,7 @@ const clientController = {
   // Create a new client
   createClient: async (req, res) => {
     try {
-      const { name, account_number, email, phone, address } = req.body;
+      const { name, account_number, email, phone, address, balance } = req.body;
       console.log('Creating client with data:', req.body);
 
       // Validate required fields
@@ -106,8 +106,8 @@ const clientController = {
 
       // Insert new client
       const [result] = await db.query(
-        'INSERT INTO clients (name, account_number, email, phone, address) VALUES (?, ?, ?, ?, ?)',
-        [name, account_number, email, phone, address]
+        'INSERT INTO clients (name, account_number, email, phone, address, balance) VALUES (?, ?, ?, ?, ?, ?)',
+        [name, account_number, email, phone, address, balance || 0.00]
       );
 
       // Fetch the newly created client
@@ -130,7 +130,7 @@ const clientController = {
   updateClient: async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, account_number, email, phone, address } = req.body;
+      const { name, account_number, email, phone, address, balance } = req.body;
       console.log('Updating client with ID:', id, 'Data:', req.body);
 
       // Validate required fields
@@ -152,8 +152,8 @@ const clientController = {
 
       // Update client
       await db.query(
-        'UPDATE clients SET name = ?, account_number = ?, email = ?, phone = ?, address = ? WHERE id = ?',
-        [name, account_number, email, phone, address, id]
+        'UPDATE clients SET name = ?, account_number = ?, email = ?, phone = ?, address = ?, balance = ? WHERE id = ?',
+        [name, account_number, email, phone, address, balance || 0.00, id]
       );
 
       // Fetch the updated client

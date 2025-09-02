@@ -12,6 +12,7 @@ const clientController = require('./controllers/clientController');
 const branchController = require('./controllers/branchController');
 const serviceChargeController = require('./controllers/serviceChargeController');
 const noticeController = require('./controllers/noticeController');
+const inquiryController = require('./controllers/inquiryController');
 require('dotenv').config();
 
 const app = express();
@@ -28,6 +29,24 @@ const corsOptions = {
 // Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// JWT Authentication middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: 'Access token required' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+    if (err) {
+      return res.status(403).json({ message: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+};
 
 // Helper function to map database fields to frontend fields
 const mapRequestFields = (request) => ({
@@ -95,6 +114,7 @@ app.post('/api/auth/login', async (req, res) => {
     console.log('Creating JWT token for branch:', username);
     const token = jwt.sign(
       { 
+        id: branch.id,
         branchId: branch.id,
         name: branch.name,
         role: branch.role,
@@ -155,9 +175,14 @@ app.get('/api/service-types/:id', async (req, res) => {
 });
 
 // Requests routes
-app.get('/api/requests', async (req, res) => {
+app.get('/api/requests', authenticateToken, async (req, res) => {
   try {
     const { status, myStatus, branchId, pickupDate } = req.query;
+    const userId = req.user.branchId; // Get the authenticated user's branch ID
+    
+    console.log('Authenticated user data:', req.user);
+    console.log('Using userId for filtering:', userId);
+    
     let query = `
       SELECT r.*, b.name as branch_name, c.name as client_name, st.name as service_type_name
       FROM requests r
@@ -166,7 +191,9 @@ app.get('/api/requests', async (req, res) => {
       LEFT JOIN service_types st ON r.service_type_id = st.id
     `;
     const params = [];
-    const filters = [];
+    const filters = ['r.branch_id = ?']; // Always filter by user's branch ID (which is the logged-in person's ID)
+    params.push(userId);
+    
     if (status) {
       filters.push('r.status = ?');
       params.push(status);
@@ -176,18 +203,27 @@ app.get('/api/requests', async (req, res) => {
       params.push(myStatus);
     }
     if (branchId) {
-      filters.push('r.branch_id = ?');
-      params.push(branchId);
+      // Override the branch filter if branchId is provided (for admin purposes)
+      const branchIndex = filters.indexOf('r.branch_id = ?');
+      if (branchIndex !== -1) {
+        filters[branchIndex] = 'r.branch_id = ?';
+        params[0] = branchId; // Replace the first parameter (user's branch_id)
+      }
     }
     if (pickupDate) {
-      filters.push('DATE(r.pickup_date) = ?');
+      filters.push("DATE(r.pickup_date) = ?");
       params.push(pickupDate);
     }
-    if (filters.length > 0) {
-      query += ' WHERE ' + filters.join(' AND ');
-    }
+    
+    query += ' WHERE ' + filters.join(' AND ');
     query += ' ORDER BY r.created_at DESC';
+    
+    console.log('Final query:', query);
+    console.log('Query params:', params);
+    
     const [requests] = await db.query(query, params);
+    // Debug: print the id and pickup_date of the first 5 results
+    console.log('First 5 pickup_date values:', requests.slice(0, 5).map(r => ({ id: r.id, pickup_date: r.pickup_date })));
     res.json(requests.map(mapRequestFields));
   } catch (error) {
     console.error('Error fetching requests:', error);
@@ -195,11 +231,11 @@ app.get('/api/requests', async (req, res) => {
   }
 });
 
-app.post('/api/requests', async (req, res) => {
+app.post('/api/requests', authenticateToken, async (req, res) => {
   try {
-    // Use branch info from authenticated user (JWT) if available
-    let branchId = req.user?.branchId;
-    let branchName = req.user?.name;
+    // Use branch info from authenticated user (JWT)
+    let branchId = req.user.branchId; // Use the authenticated user's branch ID
+    let branchName = req.user.name;
     // Fallback to body for backward compatibility
     if (!branchId) branchId = req.body.branchId;
     if (!branchName) branchName = req.body.branchName;
@@ -305,10 +341,11 @@ app.post('/api/requests', async (req, res) => {
   }
 });
 
-app.patch('/api/requests/:id', async (req, res) => {
+app.patch('/api/requests/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
+    const userId = req.user.branchId; // Get the authenticated user's branch ID
 
     // Map frontend field names to database field names
     const dbUpdates = {
@@ -344,17 +381,17 @@ app.patch('/api/requests/:id', async (req, res) => {
       .map(key => `${key} = ?`)
       .join(', ');
     
-    const values = [...Object.values(dbUpdates), id];
+    const values = [...Object.values(dbUpdates), id, userId];
 
     await db.query(
-      `UPDATE requests SET ${setClause} WHERE id = ?`,
+      `UPDATE requests SET ${setClause} WHERE id = ? AND branch_id = ?`,
       values
     );
 
     // Get the updated request
     const [requests] = await db.query(
-      'SELECT * FROM requests WHERE id = ?',
-      [id]
+      'SELECT * FROM requests WHERE id = ? AND branch_id = ?',
+      [id, userId]
     );
 
     if (requests.length === 0) {
@@ -364,6 +401,36 @@ app.patch('/api/requests/:id', async (req, res) => {
     res.json(mapRequestFields(requests[0]));
   } catch (error) {
     console.error('Error updating request:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Delete request
+app.delete('/api/requests/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.branchId; // Get the authenticated user's branch ID
+    
+    // First check if the request exists and belongs to the user's branch
+    const [existingRequest] = await db.query(
+      'SELECT * FROM requests WHERE id = ? AND branch_id = ?', 
+      [id, userId]
+    );
+    
+    if (existingRequest.length === 0) {
+      return res.status(404).json({ message: 'Request not found or access denied' });
+    }
+    
+    // Delete the request
+    const [result] = await db.query('DELETE FROM requests WHERE id = ? AND branch_id = ?', [id, userId]);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Request not found' });
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting request:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
@@ -458,6 +525,15 @@ app.post('/api/notices', noticeController.createNotice);
 app.patch('/api/notices/:id', noticeController.updateNotice);
 app.delete('/api/notices/:id', noticeController.deleteNotice);
 app.patch('/api/notices/:id/status', noticeController.toggleNoticeStatus);
+
+// Inquiry routes
+app.get('/api/inquiries', authenticateToken, inquiryController.getInquiries);
+app.get('/api/inquiries/:id', authenticateToken, inquiryController.getInquiryById);
+app.post('/api/inquiries', authenticateToken, inquiryController.createInquiry);
+app.put('/api/inquiries/:id', authenticateToken, inquiryController.updateInquiry);
+app.delete('/api/inquiries/:id', authenticateToken, inquiryController.deleteInquiry);
+app.get('/api/inquiries/status/:status', authenticateToken, inquiryController.getInquiriesByStatus);
+app.get('/api/inquiries/type/:type', authenticateToken, inquiryController.getInquiriesByType);
 
 // SOS routes
 app.get('/api/sos', async (req, res) => {

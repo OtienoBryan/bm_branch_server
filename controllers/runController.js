@@ -3,17 +3,18 @@ const db = require('../database/db');
 const runController = {
   getRuns: async (req, res) => {
     const { date } = req.query;
-
+    console.log('Received filter date:', date);
     try {
       const [runs] = await db.query(
         `SELECT r.*, b.name as branch_name, st.name as service_type_name
          FROM requests r
          LEFT JOIN branches b ON r.branch_id = b.id
          LEFT JOIN service_types st ON r.service_type_id = st.id
-         WHERE DATE(r.pickup_date) = ?
+         WHERE DATE(pickup_date) = ?
          ORDER BY r.pickup_date ASC`,
         [date]
       );
+      console.log('Runs returned:', runs.map(r => r.pickup_date));
       res.json(runs);
     } catch (error) {
       console.error('Error fetching runs:', error);
@@ -184,14 +185,16 @@ const runController = {
     try {
       const [summaries] = await db.query(
         `SELECT 
+          DATE(pickup_date) as pickupDate,
           DATE(pickup_date) as date,
           COUNT(*) as totalRuns,
-          SUM(CASE WHEN status = 'completed' THEN price ELSE 0 END) as totalAmount
+          SUM(CASE WHEN my_status = '3' THEN price ELSE 0 END) as totalAmount
          FROM requests
          GROUP BY DATE(pickup_date)
-         ORDER BY date DESC
+         ORDER BY pickup_date DESC
          LIMIT 30`
       );
+      console.log('Date summaries returned:', summaries.map(s => s.pickupDate));
       res.json(summaries);
     } catch (error) {
       console.error('Error fetching date summaries:', error);
